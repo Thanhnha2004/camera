@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiểm tra POST API Đăng nhập</title>
+    <!-- Tải Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Sử dụng font Inter để đồng nhất */
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-lg bg-white p-8 md:p-10 rounded-xl shadow-2xl border border-gray-100">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">Kiểm tra Endpoint /api/login</h1>
+        <p class="text-sm text-gray-500 mb-6 text-center">Sử dụng phương thức POST để tránh lỗi "Method Not Allowed".</p>
+
+        <!-- Form Đăng nhập giả lập -->
+        <form id="loginForm" class="space-y-6">
+            <div>
+                <label for="apiUrl" class="block text-sm font-medium text-gray-700">Địa chỉ API Endpoint</label>
+                <input type="url" id="apiUrl" value="http://127.0.0.1:8000/api/login" required
+                       class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out bg-gray-50"
+                       placeholder="http://127.0.0.1:8000/api/login">
+            </div>
+
+            <div>
+                <label for="username" class="block text-sm font-medium text-gray-700">Tên người dùng (hoặc Email)</label>
+                <input type="text" id="username" value="testuser@example.com" required
+                       class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                       placeholder="Nhập tên người dùng...">
+            </div>
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-700">Mật khẩu</label>
+                <input type="password" id="password" value="secret123" required
+                       class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                       placeholder="Nhập mật khẩu...">
+            </div>
+
+            <button type="submit"
+                    class="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200 transform hover:scale-[1.01] active:scale-[0.98]">
+                Gửi Yêu cầu POST (Đăng nhập)
+            </button>
+        </form>
+
+        <!-- Khu vực hiển thị kết quả -->
+        <div class="mt-8 pt-6 border-t border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">Kết quả Phản hồi API</h2>
+            <div id="resultContainer" class="p-4 bg-gray-50 border border-gray-200 rounded-lg whitespace-pre-wrap text-sm text-gray-700 overflow-x-auto">
+                Chờ đợi yêu cầu...
+            </div>
+            <p id="statusMessage" class="mt-3 text-sm font-medium text-gray-600"></p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('loginForm');
+        const resultContainer = document.getElementById('resultContainer');
+        const statusMessage = document.getElementById('statusMessage');
+
+        // Hàm hỗ trợ cho exponential backoff
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const apiUrl = document.getElementById('apiUrl').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // Dữ liệu đăng nhập sẽ được gửi dưới dạng JSON
+            const loginData = {
+                username: username,
+                password: password
+            };
+
+            resultContainer.textContent = 'Đang gửi yêu cầu...';
+            statusMessage.className = 'mt-3 text-sm font-medium text-blue-600';
+            statusMessage.textContent = 'Đang cố gắng kết nối và gửi dữ liệu...';
+
+            const MAX_RETRIES = 3;
+            let response = null;
+            let success = false;
+
+            for (let i = 0; i < MAX_RETRIES; i++) {
+                try {
+                    // Dùng fetch với phương thức POST
+                    response = await fetch(apiUrl, {
+                        method: 'POST', // ĐÂY LÀ PHẦN QUAN TRỌNG: CHUYỂN TỪ GET SANG POST
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(loginData)
+                    });
+
+                    // Nếu yêu cầu thành công (status 200-299), thoát khỏi vòng lặp
+                    if (response.ok) {
+                        success = true;
+                        break;
+                    } else if (response.status === 405) {
+                        // Xử lý lỗi 405 (Method Not Allowed) cụ thể
+                        resultContainer.textContent = `LỖI API (405): ${response.statusText}\n\nLỗi 405 xảy ra. Vui lòng kiểm tra lại URL API. Mặc dù bạn đang dùng POST trong code, lỗi này có thể do URL sai hoặc cấu hình routing trên server.`;
+                        statusMessage.className = 'mt-3 text-sm font-medium text-red-600';
+                        statusMessage.textContent = `Thử lại lần ${i + 1}/${MAX_RETRIES} - LỖI PHƯƠNG THỨC.`;
+                        // Không nên retry nếu là lỗi 405 vì nó sẽ luôn xảy ra
+                        success = false;
+                        break;
+                    } else {
+                        // Xử lý các lỗi khác
+                        throw new Error(`Lỗi HTTP với status: ${response.status}`);
+                    }
+
+                } catch (error) {
+                    statusMessage.className = 'mt-3 text-sm font-medium text-yellow-600';
+                    statusMessage.textContent = `Thử lại lần ${i + 1}/${MAX_RETRIES}. Lỗi: ${error.message}`;
+
+                    if (i < MAX_RETRIES - 1) {
+                        // Áp dụng exponential backoff: 1s, 2s, 4s
+                        const retryDelay = Math.pow(2, i) * 1000;
+                        await delay(retryDelay);
+                    }
+                }
+            }
+
+            if (response && success) {
+                try {
+                    const contentType = response.headers.get("content-type");
+                    let responseBody;
+
+                    if (contentType && contentType.indexOf("application/json") !== -1) {
+                        responseBody = await response.json();
+                        resultContainer.textContent = JSON.stringify(responseBody, null, 2);
+                    } else {
+                        responseBody = await response.text();
+                        resultContainer.textContent = responseBody || 'Phản hồi thành công nhưng không có nội dung (hoặc không phải JSON).';
+                    }
+
+                    statusMessage.className = 'mt-3 text-sm font-medium text-green-600';
+                    statusMessage.textContent = `Thành công! Mã trạng thái: ${response.status}`;
+
+                } catch (error) {
+                    resultContainer.textContent = `LỖI XỬ LÝ PHẢN HỒI: ${error.message}`;
+                    statusMessage.className = 'mt-3 text-sm font-medium text-red-600';
+                    statusMessage.textContent = `Yêu cầu thành công (Mã: ${response.status}) nhưng không thể đọc phản hồi.`;
+                }
+            } else if (!success) {
+                resultContainer.textContent = 'YÊU CẦU THẤT BẠI: Không thể kết nối với API hoặc lỗi không thể khắc phục. Vui lòng kiểm tra console để biết chi tiết.';
+                statusMessage.className = 'mt-3 text-sm font-medium text-red-600';
+                statusMessage.textContent = 'Yêu cầu không thành công sau tất cả các lần thử.';
+            }
+        });
+    </script>
+</body>
+</html>
